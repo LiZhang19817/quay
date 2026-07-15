@@ -363,3 +363,73 @@ class TestAuditLogging:
                 call_args = mock_log.call_args
                 assert call_args[0][0] == "delete_namespace_notification"
                 assert call_args[0][1] == "buynlarge"
+
+
+class TestGlobalReadOnlySuperuserOrgNotifications:
+    """
+    Test that global readonly superusers can read org notifications
+    but are blocked from write operations (PROJQUAY-12233).
+    """
+
+    def test_global_readonly_superuser_can_list_notifications(self, app):
+        """Global readonly superusers should be able to list org notifications."""
+        notif = _create_notification("buynlarge")
+        try:
+            with client_with_identity("globalreadonlysuperuser", app) as cl:
+                resp = conduct_api_call(
+                    cl, OrgNamespaceNotificationList, "GET", {"orgname": "buynlarge"}, None, 200
+                )
+                notifications = resp.json["notifications"]
+                assert len(notifications) >= 1
+                uuids = [n["uuid"] for n in notifications]
+                assert notif.uuid in uuids
+        finally:
+            notif.delete_instance()
+
+    def test_global_readonly_superuser_can_get_notification(self, app):
+        """Global readonly superusers should be able to get a specific org notification."""
+        notif = _create_notification("buynlarge")
+        try:
+            with client_with_identity("globalreadonlysuperuser", app) as cl:
+                resp = conduct_api_call(
+                    cl,
+                    OrgNamespaceNotification,
+                    "GET",
+                    {"orgname": "buynlarge", "uuid": notif.uuid},
+                    None,
+                    200,
+                )
+                assert resp.json["uuid"] == notif.uuid
+                assert resp.json["event"] == "quota_warning"
+        finally:
+            notif.delete_instance()
+
+    def test_global_readonly_superuser_cannot_create_notification(self, app):
+        """Global readonly superusers should be blocked from creating org notifications."""
+        with client_with_identity("globalreadonlysuperuser", app) as cl:
+            body = {
+                "event": "quota_warning",
+                "method": "email",
+                "config": {"email": "test@example.com"},
+                "eventConfig": {},
+                "title": "Should Be Blocked",
+            }
+            conduct_api_call(
+                cl, OrgNamespaceNotificationList, "POST", {"orgname": "buynlarge"}, body, 403
+            )
+
+    def test_global_readonly_superuser_cannot_delete_notification(self, app):
+        """Global readonly superusers should be blocked from deleting org notifications."""
+        notif = _create_notification("buynlarge")
+        try:
+            with client_with_identity("globalreadonlysuperuser", app) as cl:
+                conduct_api_call(
+                    cl,
+                    OrgNamespaceNotification,
+                    "DELETE",
+                    {"orgname": "buynlarge", "uuid": notif.uuid},
+                    None,
+                    403,
+                )
+        finally:
+            notif.delete_instance()
