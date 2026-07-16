@@ -1329,7 +1329,99 @@ test.describe(
     });
 
     // ========================================================================
-    // Section 22 -- Backfill status
+    // Section 22 -- Namespace Notifications (Quota Notifications)
+    // ========================================================================
+
+    test.describe(
+      'Namespace Notifications',
+      {tag: ['@feature:QUOTA_NOTIFICATIONS']},
+      () => {
+        let notificationUuid: string;
+
+        test.beforeAll(async ({adminClient}) => {
+          await adminClient.post('/api/v1/organization/', {
+            name: orgName,
+            email: `${orgName}@example.com`,
+          });
+
+          const createResp = await adminClient.post(
+            `/api/v1/organization/${orgName}/notifications`,
+            {
+              event: 'quota_warning',
+              method: 'webhook',
+              config: {url: 'https://example.com/readonly-test'},
+              eventConfig: {},
+              title: 'Readonly Test Notification',
+            },
+          );
+          if (createResp.status() === 201) {
+            const body = await createResp.json();
+            notificationUuid = body.uuid;
+          }
+        });
+
+        test.afterAll(async ({adminClient}) => {
+          if (notificationUuid) {
+            await adminClient.delete(
+              `/api/v1/organization/${orgName}/notifications/${notificationUuid}`,
+            );
+          }
+          await adminClient.delete(`/api/v1/organization/${orgName}`);
+        });
+
+        test('can GET organization namespace notifications list', async () => {
+          const r = await readonlyClient.get(
+            `/api/v1/organization/${orgName}/notifications`,
+          );
+          expect(r.status()).toBe(200);
+          const body = await r.json();
+          expect(body.notifications).toBeDefined();
+        });
+
+        test('can GET organization namespace notification by UUID', async () => {
+          test.skip(!notificationUuid, 'No notification UUID available');
+          const r = await readonlyClient.get(
+            `/api/v1/organization/${orgName}/notifications/${notificationUuid}`,
+          );
+          expect(r.status()).toBe(200);
+          const body = await r.json();
+          expect(body.uuid).toBe(notificationUuid);
+        });
+
+        test('cannot POST organization namespace notification', async () => {
+          const r = await readonlyClient.post(
+            `/api/v1/organization/${orgName}/notifications`,
+            {
+              event: 'quota_warning',
+              method: 'webhook',
+              config: {url: 'https://example.com/should-fail'},
+              eventConfig: {},
+              title: 'Should Be Blocked',
+            },
+          );
+          expect(r.status()).toBe(403);
+        });
+
+        test('cannot DELETE organization namespace notification', async () => {
+          test.skip(!notificationUuid, 'No notification UUID available');
+          const r = await readonlyClient.delete(
+            `/api/v1/organization/${orgName}/notifications/${notificationUuid}`,
+          );
+          expect(r.status()).toBe(403);
+        });
+
+        test('cannot POST test-fire namespace notification', async () => {
+          test.skip(!notificationUuid, 'No notification UUID available');
+          const r = await readonlyClient.post(
+            `/api/v1/organization/${orgName}/notifications/${notificationUuid}/test`,
+          );
+          expect(r.status()).toBe(403);
+        });
+      },
+    );
+
+    // ========================================================================
+    // Section 23 -- Backfill status
     // ========================================================================
 
     test.describe('Security scanner backfill', () => {
