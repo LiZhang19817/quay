@@ -56,8 +56,8 @@ export default function CreateRepositoryModalTemplate(
     name: props.orgName
       ? props.orgName
       : props.username
-      ? props.username
-      : null,
+        ? props.username
+        : null,
     isDropdownOpen: false,
   });
 
